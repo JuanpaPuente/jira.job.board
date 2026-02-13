@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban Board</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;0,800;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #f5f0e8;
+    --surface: #fffef9;
+    --border:  #ddd8cc;
+    --ink:     #1c1a17;
+    --ink2:    #6b6560;
+    --shadow:  rgba(28,26,23,0.10);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Fraunces', Georgia, serif;
+    color: var(--ink); min-height: 100vh;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(180,170,155,0.15) 39px, rgba(180,170,155,0.15) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(180,170,155,0.08) 39px, rgba(180,170,155,0.08) 40px);
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 32px 18px; border-bottom: 2px solid var(--border);
+    background: var(--surface); box-shadow: 0 2px 12px var(--shadow);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-mark {
+    width: 36px; height: 36px; background: var(--ink); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; color: #fff; font-family: 'DM Mono', monospace;
+    font-weight: 500; letter-spacing: -0.05em; flex-shrink: 0;
+  }
+  .logo-text { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+  .logo-sub { font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--ink2); letter-spacing: 0.12em; margin-top: 2px; }
+  .add-btn {
+    display: flex; align-items: center; gap: 8px; padding: 9px 20px;
+    background: var(--ink); color: #fffef9; border: none; border-radius: 8px;
+    font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500;
+    letter-spacing: 0.06em; cursor: pointer; transition: all 0.18s ease;
+    box-shadow: 0 2px 8px rgba(28,26,23,0.18);
+  }
+  .add-btn:hover { background: #3d3830; transform: translateY(-1px); box-shadow: 0 5px 16px rgba(28,26,23,0.25); }
+  .add-btn svg { width: 15px; height: 15px; }
+
+  .board-wrap { overflow-x: auto; padding: 28px 32px 40px; }
+  .board { display: flex; gap: 16px; min-width: max-content; align-items: flex-start; }
+
+  .column {
+    width: 235px; flex-shrink: 0; background: var(--surface);
+    border: 1.5px solid var(--border); border-radius: 14px; min-height: 540px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 4px 20px var(--shadow);
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s; overflow: hidden;
+  }
+  .column.drag-over { background: #fffbf5; box-shadow: 0 4px 28px rgba(0,0,0,0.18); }
+  .col-header {
+    padding: 14px 16px 12px; border-bottom: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .col-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .col-accent { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .col-title {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em;
+    font-family: 'DM Mono', monospace; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .col-count {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    background: rgba(28,26,23,0.07); color: var(--ink2);
+    padding: 2px 8px; border-radius: 50px; letter-spacing: 0.08em; flex-shrink: 0;
+  }
+  .col-body { padding: 12px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+  /* ── Task Card ── */
+  .task-card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 11px 13px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
+    position: relative; cursor: grab;
+  }
+  .task-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--accent-color, #ccc); border-radius: 3px 0 0 3px;
+  }
+  .task-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--shadow); border-color: #c8c2b6; z-index: 10; }
+  .task-card.dragging { opacity: 0.35; transform: scale(0.96); cursor: grabbing; }
+
+  .task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+  .task-title { font-size: 0.88rem; font-weight: 600; line-height: 1.4; color: var(--ink); flex: 1; user-select: none; }
+
+  .task-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .task-btn {
+    background: none; border: none; cursor: pointer; line-height: 1;
+    padding: 3px 5px; border-radius: 5px;
+    transition: background 0.12s, color 0.12s;
+    font-size: 0.8rem; color: var(--ink2);
+    -webkit-user-drag: none;
+  }
+  .task-btn:hover { background: rgba(28,26,23,0.08); }
+  .task-btn.attach { color: #3b82f6; font-size: 0.9rem; }
+  .task-btn.attach:hover { background: rgba(59,130,246,0.12); }
+  .task-btn.delete:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
+  .task-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+  .task-tag {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.08em;
+    padding: 2px 8px; border-radius: 50px; font-weight: 500;
+    white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .attach-count-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-family: 'DM Mono', monospace; font-size: 0.58rem;
+    color: #3b82f6; background: rgba(59,130,246,0.09);
+    border: 1px solid rgba(59,130,246,0.2); padding: 1px 7px;
+    border-radius: 50px; letter-spacing: 0.05em;
+  }
+
+  /* Attachment strip on card */
+  .attach-strip { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+  .attach-item { display: flex; align-items: center; gap: 6px; background: rgba(28,26,23,0.03); border-radius: 6px; padding: 4px 7px; }
+  .attach-item-icon { font-size: 0.85rem; flex-shrink: 0; }
+  .attach-item-name {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #3b82f6; font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    text-decoration: none; cursor: pointer;
+  }
+  .attach-item-name:hover { text-decoration: underline; }
+  .attach-item-size { color: #b8b2aa; font-family: 'DM Mono', monospace; font-size: 0.58rem; white-space: nowrap; }
+  .attach-item-del {
+    background: none; border: none; cursor: pointer; color: #c8c2b6;
+    font-size: 0.7rem; padding: 0 2px; line-height: 1;
+  }
+  .attach-item-del:hover { color: #ef4444; }
+
+  .empty-state {
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    flex: 1; padding: 32px 12px; color: #b8b2aa; font-size: 0.72rem;
+    font-family: 'DM Mono', monospace; letter-spacing: 0.07em; text-align: center; gap: 8px;
+  }
+  .empty-state.show { display: flex; }
+  .empty-icon { font-size: 1.6rem; opacity: 0.35; }
+
+  /* ── Modals ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(28,26,23,0.5); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 16px; padding: 28px 30px; width: 460px; max-width: 96vw;
+    box-shadow: 0 20px 60px rgba(28,26,23,0.25);
+    transform: translateY(16px) scale(0.98); transition: transform 0.25s ease;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+  .modal-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 6px; }
+  .modal-subtitle { font-size: 0.82rem; color: var(--ink2); margin-bottom: 18px; font-style: italic; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { display: block; font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.12em; color: var(--ink2); margin-bottom: 5px; text-transform: uppercase; }
+  .form-input, .form-select {
+    width: 100%; padding: 9px 13px; background: var(--bg);
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: 'Fraunces', serif; font-size: 0.97rem; color: var(--ink);
+    outline: none; transition: border-color 0.15s;
+  }
+  .form-input:focus, .form-select:focus { border-color: var(--ink); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-primary {
+    flex: 1; padding: 10px; background: var(--ink); color: #fffef9;
+    border: none; border-radius: 8px; font-family: 'DM Mono', monospace;
+    font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; cursor: pointer; transition: background 0.15s;
+  }
+  .btn-primary:hover { background: #3d3830; }
+  .btn-cancel {
+    padding: 10px 20px; background: transparent; border: 1.5px solid var(--border);
+    border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.78rem;
+    color: var(--ink2); cursor: pointer; transition: all 0.15s;
+  }
+  .btn-cancel:hover { border-color: var(--ink); color: var(--ink); }
+
+  /* ── Attach modal ── */
+  .browse-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 18px; margin-bottom: 12px;
+    background: #eff6ff; border: 2px solid #3b82f6; border-radius: 12px;
+    color: #1d4ed8; font-family: 'DM Mono', monospace; font-size: 0.85rem;
+    font-weight: 500; letter-spacing: 0.08em; cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .browse-btn:hover { background: #dbeafe; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(59,130,246,0.2); }
+  .browse-btn-icon { font-size: 1.4rem; }
+
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 16px 20px;
+    text-align: center; transition: all 0.2s;
+    color: var(--ink2); font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.07em; background: var(--bg); margin-bottom: 12px;
+  }
+  .drop-zone.drag-active { border-color: #3b82f6; background: rgba(59,130,246,0.05); color: #3b82f6; }
+
+  .file-queue { display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 8px; }
+  .file-queue-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: rgba(28,26,23,0.04); border-radius: 7px;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink);
+  }
+  .file-queue-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-queue-size { color: var(--ink2); white-space: nowrap; }
+  .file-queue-rm { background: none; border: none; cursor: pointer; color: #c8c2b6; font-size: 0.75rem; }
+  .file-queue-rm:hover { color: #ef4444; }
+
+  .upload-progress { display: none; margin: 8px 0; height: 5px; background: rgba(28,26,23,0.08); border-radius: 50px; overflow: hidden; }
+  .upload-progress.show { display: block; }
+  .upload-bar { height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 50px; transition: width 0.3s; width: 0%; }
+
+  .existing-files { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .existing-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em; color: var(--ink2); text-transform: uppercase; margin-bottom: 8px; display: block; }
+  .existing-file-row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 7px; margin-bottom: 5px;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+  }
+  .existing-file-icon { font-size: 1rem; flex-shrink: 0; }
+  .existing-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #3b82f6; cursor: pointer; }
+  .existing-file-name:hover { text-decoration: underline; }
+  .existing-file-size { color: var(--ink2); white-space: nowrap; }
+  .existing-file-del { background: none; border: none; cursor: pointer; color: #c8c2b6; font-size: 0.75rem; padding: 0 2px; }
+  .existing-file-del:hover { color: #ef4444; }
+</style>
+</head>
+<body>
+
+<input type="file" id="fileInput" multiple style="display:none" accept="*/*">
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">kb</div>
+    <div>
+      <div class="logo-text">Kanban</div>
+      <div class="logo-sub">TASK BOARD</div>
+    </div>
+  </div>
+  <button class="add-btn" onclick="openNewTaskModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    NEW TASK
+  </button>
+</header>
+
+<div class="board-wrap">
+  <div class="board" id="board"></div>
+</div>
+
+<!-- New Task Modal -->
+<div class="modal-overlay" id="newTaskOverlay" onclick="closeModalOutside(event,'newTaskOverlay')">
+  <div class="modal">
+    <div class="modal-title">Add New Task</div>
+    <div class="form-group">
+      <label class="form-label">Task Title</label>
+      <input class="form-input" id="taskTitle" type="text" placeholder="What needs to be done?" maxlength="80"
+             onkeydown="if(event.key==='Enter') submitTask()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Job Type</label>
+      <select class="form-select" id="taskTag">
+        <option value="Vibration">Vibration</option>
+        <option value="Shock">Shock</option>
+        <option value="Vibration & Shock">Vibration &amp; Shock</option>
+        <option value="Centrifuge">Centrifuge</option>
+        <option value="EMC">EMC</option>
+        <option value="TVAC">TVAC</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Add to Column</label>
+      <select class="form-select" id="taskCol">
+        <option value="todo">To Do</option>
+        <option value="preparation">In Preparation</option>
+        <option value="first_axis">First Axis</option>
+        <option value="second_axis">Second Axis</option>
+        <option value="third_axis">Third Axis</option>
+        <option value="shock">Shock</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="submitTask()">CREATE TASK</button>
+      <button class="btn-cancel" onclick="closeModal('newTaskOverlay')">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Attach Files Modal -->
+<div class="modal-overlay" id="attachOverlay" onclick="closeModalOutside(event,'attachOverlay')">
+  <div class="modal">
+    <div class="modal-title">📎 Attach Files</div>
+    <div class="modal-subtitle" id="attachModalSubtitle">Card: —</div>
+
+    <label for="fileInput" class="browse-btn">
+      <span class="browse-btn-icon">📂</span>
+      BROWSE FILES — Click to Open File Explorer
+    </label>
+
+    <div class="drop-zone" id="dropZone"
+         ondragover="dzDragOver(event)" ondragleave="dzDragLeave(event)" ondrop="dzDrop(event)">
+      or drag &amp; drop files here
+    </div>
+
+    <div class="file-queue" id="fileQueue"></div>
+    <div class="upload-progress" id="uploadProgress"><div class="upload-bar" id="uploadBar"></div></div>
+
+    <div class="existing-files" id="existingFiles" style="display:none"></div>
+
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="uploadFiles()">⬆ UPLOAD</button>
+      <button class="btn-cancel" onclick="closeModal('attachOverlay')">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLUMNS = [
+  { id: 'todo',        label: 'To Do',         accent: '#f97316', emoji: '📋' },
+  { id: 'preparation', label: 'In Preparation', accent: '#a855f7', emoji: '🔧' },
+  { id: 'first_axis',  label: 'First Axis',     accent: '#3b82f6', emoji: '📐' },
+  { id: 'second_axis', label: 'Second Axis',    accent: '#06b6d4', emoji: '📏' },
+  { id: 'third_axis',  label: 'Third Axis',     accent: '#eab308', emoji: '📊' },
+  { id: 'shock',       label: 'Shock',          accent: '#ef4444', emoji: '⚡' },
+  { id: 'done',        label: 'Done',           accent: '#10b981', emoji: '✅' },
+];
+
+const JOB_TYPE_COLORS = {
+  'Vibration':         { bg: '#ede9fe', fg: '#6d28d9' },
+  'Shock':             { bg: '#fee2e2', fg: '#b91c1c' },
+  'Vibration & Shock': { bg: '#fdf4ff', fg: '#86198f' },
+  'Centrifuge':        { bg: '#fff7ed', fg: '#c2410c' },
+  'EMC':               { bg: '#ecfdf5', fg: '#065f46' },
+  'TVAC':              { bg: '#eff6ff', fg: '#1d4ed8' },
+};
+const JOB_TYPE_ACCENTS = {
+  'Vibration': '#7c3aed', 'Shock': '#ef4444',
+  'Vibration & Shock': '#c026d3', 'Centrifuge': '#f97316',
+  'EMC': '#10b981', 'TVAC': '#3b82f6',
+};
+
+// ── Local Storage Manager ──
+const STORAGE_KEY = 'kanban_tasks';
+const FILES_KEY = 'kanban_files';
+
+let state = null;
+let dragId = null;
+let attachTaskId = null;
+let pendingFiles = [];
+let nextId = 8;
+
+// Initialize default state
+function getDefaultState() {
+  return {
+    todo: [
+      {id: "t1", title: "Vibration sweep test", tag: "Vibration", attachments: []},
+      {id: "t2", title: "EMC pre-compliance scan", tag: "EMC", attachments: []},
+      {id: "t3", title: "TVAC thermal cycling", tag: "TVAC", attachments: []},
+    ],
+    preparation: [
+      {id: "t4", title: "Fixture design review", tag: "Vibration & Shock", attachments: []},
+      {id: "t5", title: "Centrifuge load calculation", tag: "Centrifuge", attachments: []},
+    ],
+    first_axis:  [],
+    second_axis: [],
+    third_axis:  [],
+    shock: [
+      {id: "t6", title: "Half-sine pulse profile", tag: "Shock", attachments: []},
+    ],
+    done: [
+      {id: "t7", title: "Initial requirements review", tag: "Vibration", attachments: []},
+    ],
+  };
+}
+
+// File storage (as base64)
+function saveFile(filename, data) {
+  const files = JSON.parse(localStorage.getItem(FILES_KEY) || '{}');
+  files[filename] = data;
+  localStorage.setItem(FILES_KEY, JSON.stringify(files));
+}
+
+function getFile(filename) {
+  const files = JSON.parse(localStorage.getItem(FILES_KEY) || '{}');
+  return files[filename];
+}
+
+function deleteFile(filename) {
+  const files = JSON.parse(localStorage.getItem(FILES_KEY) || '{}');
+  delete files[filename];
+  localStorage.setItem(FILES_KEY, JSON.stringify(files));
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    state = JSON.parse(saved);
+  } else {
+    state = getDefaultState();
+    saveState();
+  }
+  render();
+}
+
+function findTask(tid) {
+  for (const col of Object.keys(state)) {
+    const task = (state[col] || []).find(t => t.id === tid);
+    if (task) return { task, col };
+  }
+  return { task: null, col: null };
+}
+
+// ── Build Columns ──
+function buildColumns() {
+  const board = document.getElementById('board');
+  COLUMNS.forEach(col => {
+    const div = document.createElement('div');
+    div.className = 'column';
+    div.id = 'col-' + col.id;
+    div.dataset.col = col.id;
+    div.addEventListener('dragover', onDragOver);
+    div.addEventListener('dragleave', onDragLeave);
+    div.addEventListener('drop', e => onDrop(e, col.id));
+    div.innerHTML =
+      '<div class="col-header" style="border-top:3px solid ' + col.accent + ';">' +
+        '<div class="col-title-row">' +
+          '<div class="col-accent" style="background:' + col.accent + ';"></div>' +
+          '<span class="col-title">' + col.label + '</span>' +
+        '</div>' +
+        '<span class="col-count" id="count-' + col.id + '">0</span>' +
+      '</div>' +
+      '<div class="col-body" id="body-' + col.id + '"></div>';
+    board.appendChild(div);
+  });
+}
+
+// ── Render ──
+function render() {
+  COLUMNS.forEach(col => {
+    const body  = document.getElementById('body-'  + col.id);
+    const count = document.getElementById('count-' + col.id);
+    const items = state[col.id] || [];
+    count.textContent = items.length;
+    body.innerHTML = '';
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state show';
+      empty.innerHTML = '<span class="empty-icon">' + col.emoji + '</span><span>Drop here</span>';
+      body.appendChild(empty);
+      return;
+    }
+
+    items.forEach(task => {
+      const tc  = JOB_TYPE_COLORS[task.tag] || { bg: '#f0ece4', fg: '#6b6560' };
+      const ac  = JOB_TYPE_ACCENTS[task.tag] || '#999';
+      const att = task.attachments || [];
+
+      const card = document.createElement('div');
+      card.className = 'task-card';
+      card.draggable = true;
+      card.dataset.id = task.id;
+      card.style.setProperty('--accent-color', ac);
+
+      // Attachment strip
+      let attHtml = '';
+      if (att.length > 0) {
+        const rows = att.map(function(a) {
+          return '<div class="attach-item">' +
+            '<span class="attach-item-icon">' + a.icon + '</span>' +
+            '<span class="attach-item-name" onclick="downloadAttachment(\'' + escAttr(a.stored) + '\',\'' + escAttr(a.name) + '\')" title="' + escAttr(a.name) + '">' + escHtml(a.name) + '</span>' +
+            '<span class="attach-item-size">' + a.size + '</span>' +
+            '<button class="attach-item-del" onclick="event.stopPropagation();deleteAttachment(\'' + task.id + '\',\'' + escAttr(a.stored) + '\')" title="Remove">✕</button>' +
+          '</div>';
+        }).join('');
+        attHtml = '<div class="attach-strip">' + rows + '</div>';
+      }
+
+      const badge = att.length > 0 ? '<span class="attach-count-badge">📎 ' + att.length + '</span>' : '';
+
+      card.innerHTML =
+        '<div class="task-top">' +
+          '<span class="task-title">' + escHtml(task.title) + '</span>' +
+          '<div class="task-actions">' +
+            '<button class="task-btn attach" title="Attach files">📎</button>' +
+            '<button class="task-btn delete" title="Delete card">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="task-footer">' +
+          '<span class="task-tag" style="background:' + tc.bg + ';color:' + tc.fg + '">' + escHtml(task.tag) + '</span>' +
+          badge +
+        '</div>' +
+        attHtml;
+
+      const attachBtn = card.querySelector('.task-btn.attach');
+      const deleteBtn = card.querySelector('.task-btn.delete');
+
+      attachBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        attachTaskId = task.id;
+        openAttachModal(task.id, task.title);
+      });
+      deleteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteTask(task.id, col.id);
+      });
+
+      card.addEventListener('dragstart', function(e) {
+        if (e.target.classList.contains('task-btn') || e.target.closest('.task-btn')) {
+          e.preventDefault(); return;
+        }
+        dragId = task.id;
+        setTimeout(function() { card.classList.add('dragging'); }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', function() {
+        card.classList.remove('dragging');
+        dragId = null;
+      });
+
+      body.appendChild(card);
+    });
+  });
+}
+
+// ── Drag & Drop ──
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+  const col = COLUMNS.find(c => c.id === e.currentTarget.dataset.col);
+  if (col) {
+    e.currentTarget.style.borderColor = col.accent;
+    e.currentTarget.style.boxShadow = '0 4px 28px ' + col.accent + '44';
+  }
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+  e.currentTarget.style.borderColor = '';
+  e.currentTarget.style.boxShadow = '';
+}
+
+function onDrop(e, targetCol) {
+  e.preventDefault(); 
+  onDragLeave(e);
+  if (!dragId) return;
+  
+  // Find and move task
+  for (const col of Object.keys(state)) {
+    const idx = (state[col] || []).findIndex(t => t.id === dragId);
+    if (idx !== -1) {
+      const [task] = state[col].splice(idx, 1);
+      if (!state[targetCol]) state[targetCol] = [];
+      state[targetCol].push(task);
+      saveState();
+      render();
+      return;
+    }
+  }
+}
+
+function deleteTask(id, col) {
+  const task = (state[col] || []).find(t => t.id === id);
+  if (task) {
+    // Delete associated files
+    (task.attachments || []).forEach(att => {
+      deleteFile(att.stored);
+    });
+  }
+  state[col] = (state[col] || []).filter(t => t.id !== id);
+  saveState();
+  render();
+}
+
+// ── New Task Modal ──
+function openNewTaskModal() {
+  document.getElementById('newTaskOverlay').classList.add('open');
+  setTimeout(function() { document.getElementById('taskTitle').focus(); }, 80);
+}
+
+function closeModal(id) { 
+  document.getElementById(id).classList.remove('open'); 
+}
+
+function closeModalOutside(e, id) { 
+  if (e.target === e.currentTarget) closeModal(id); 
+}
+
+function submitTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { 
+    document.getElementById('taskTitle').focus(); 
+    return; 
+  }
+  
+  const task = {
+    id: 't' + nextId++,
+    title: title,
+    tag: document.getElementById('taskTag').value,
+    attachments: []
+  };
+  
+  const col = document.getElementById('taskCol').value;
+  if (!state[col]) state[col] = [];
+  state[col].push(task);
+  
+  saveState();
+  document.getElementById('taskTitle').value = '';
+  closeModal('newTaskOverlay');
+  render();
+}
+
+// ── Attach Modal ──
+function openAttachModal(taskId, taskTitle) {
+  attachTaskId = taskId;
+  pendingFiles = [];
+  document.getElementById('fileInput').value = '';
+  document.getElementById('attachModalSubtitle').textContent = 'Card: ' + taskTitle;
+  document.getElementById('fileQueue').innerHTML = '';
+  document.getElementById('uploadProgress').classList.remove('show');
+  document.getElementById('uploadBar').style.width = '0%';
+  renderExistingFiles(taskId);
+  document.getElementById('attachOverlay').classList.add('open');
+}
+
+// File input handler
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  addToQueue(Array.from(e.target.files));
+});
+
+function renderExistingFiles(taskId) {
+  const { task } = findTask(taskId);
+  const cont = document.getElementById('existingFiles');
+  
+  if (!task || !task.attachments || task.attachments.length === 0) {
+    cont.style.display = 'none';
+    cont.innerHTML = '';
+    return;
+  }
+  
+  cont.style.display = 'block';
+  const rows = task.attachments.map(function(a) {
+    return '<div class="existing-file-row">' +
+      '<span class="existing-file-icon">' + a.icon + '</span>' +
+      '<span class="existing-file-name" onclick="downloadAttachment(\'' + escAttr(a.stored) + '\',\'' + escAttr(a.name) + '\')" title="' + escAttr(a.name) + '">' + escHtml(a.name) + '</span>' +
+      '<span class="existing-file-size">' + a.size + '</span>' +
+      '<button class="existing-file-del" onclick="deleteAttachment(\'' + taskId + '\',\'' + escAttr(a.stored) + '\')" title="Remove">✕</button>' +
+    '</div>';
+  }).join('');
+  cont.innerHTML = '<span class="existing-label">Attached (' + task.attachments.length + ')</span>' + rows;
+}
+
+// Drop zone
+function dzDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.add('drag-active');
+}
+
+function dzDragLeave() {
+  document.getElementById('dropZone').classList.remove('drag-active');
+}
+
+function dzDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-active');
+  addToQueue(Array.from(e.dataTransfer.files));
+}
+
+function addToQueue(files) {
+  files.forEach(function(f) {
+    if (!pendingFiles.find(p => p.name === f.name && p.size === f.size)) {
+      pendingFiles.push(f);
+    }
+  });
+  renderQueue();
+}
+
+function removeFromQueue(idx) { 
+  pendingFiles.splice(idx, 1); 
+  renderQueue(); 
+}
+
+function renderQueue() {
+  const q = document.getElementById('fileQueue');
+  if (pendingFiles.length === 0) { 
+    q.innerHTML = ''; 
+    return; 
+  }
+  q.innerHTML = pendingFiles.map(function(f, i) {
+    return '<div class="file-queue-item">' +
+      '<span>' + fileIcon(f.name) + '</span>' +
+      '<span class="file-queue-name">' + escHtml(f.name) + '</span>' +
+      '<span class="file-queue-size">' + fmtSize(f.size) + '</span>' +
+      '<button class="file-queue-rm" onclick="removeFromQueue(' + i + ')">✕</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function uploadFiles() {
+  if (pendingFiles.length === 0) { 
+    alert('Please select at least one file first.'); 
+    return; 
+  }
+  
+  const prog = document.getElementById('uploadProgress');
+  const bar  = document.getElementById('uploadBar');
+  prog.classList.add('show');
+  bar.style.width = '15%';
+  
+  const { task } = findTask(attachTaskId);
+  if (!task) {
+    alert('Task not found');
+    return;
+  }
+  
+  // Process files
+  for (let i = 0; i < pendingFiles.length; i++) {
+    const file = pendingFiles[i];
+    const stored = attachTaskId + '_' + file.name;
+    
+    // Read file as base64
+    const reader = new FileReader();
+    await new Promise((resolve) => {
+      reader.onload = function(e) {
+        saveFile(stored, e.target.result);
+        
+        if (!task.attachments) task.attachments = [];
+        task.attachments.push({
+          name: file.name,
+          stored: stored,
+          size: fmtSize(file.size),
+          icon: fileIcon(file.name)
+        });
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    bar.style.width = (45 + (i + 1) / pendingFiles.length * 45) + '%';
+  }
+  
+  bar.style.width = '100%';
+  saveState();
+  pendingFiles = [];
+  render();
+  renderExistingFiles(attachTaskId);
+  document.getElementById('fileQueue').innerHTML = '';
+  
+  setTimeout(function() { 
+    prog.classList.remove('show'); 
+    bar.style.width = '0%'; 
+  }, 700);
+}
+
+function deleteAttachment(taskId, stored) {
+  const { task } = findTask(taskId);
+  if (task) {
+    deleteFile(stored);
+    task.attachments = (task.attachments || []).filter(a => a.stored !== stored);
+    saveState();
+    render();
+    if (attachTaskId === taskId) renderExistingFiles(taskId);
+  }
+}
+
+function downloadAttachment(stored, name) {
+  const data = getFile(stored);
+  if (!data) {
+    alert('File not found');
+    return;
+  }
+  
+  const link = document.createElement('a');
+  link.href = data;
+  link.download = name;
+  link.click();
+}
+
+// ── Helpers ──
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { 
+    pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', ppt:'📋', pptx:'📋',
+    png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', svg:'🖼️', zip:'🗜️', rar:'🗜️', '7z':'🗜️',
+    txt:'📃', csv:'📃', json:'📃', mp4:'🎬', mp3:'🎵' 
+  };
+  return map[ext] || '📎';
+}
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/'/g,'&#39;');
+}
+
+// ── Initialize ──
+buildColumns();
+loadState();
+</script>
+</body>
+</html>
